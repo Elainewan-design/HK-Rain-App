@@ -100,23 +100,34 @@
         .leaflet-bar {
             border: none !important;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+            border-radius: 0.5rem !important; /* Rounded container border boundary */
+            overflow: hidden;
         }
         
-        /* Completely hide the zoom-out button */
-        .leaflet-control-zoom-out {
-            display: none !important;
-        }
-
-        /* Restyle the zoom-in button into a clean standalone rounded control */
-        .leaflet-bar a.leaflet-control-zoom-in {
+        /* Styled both Zoom In and Zoom Out as a beautifully unified stack */
+        .leaflet-bar a {
             background-color: var(--border-color) !important;
             color: var(--text-primary) !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 0.5rem !important; /* clean rounded corners on all sides */
-            width: 36px !important;
-            height: 36px !important;
-            line-height: 34px !important;
+            border: none !important;
+            width: 38px !important;
+            height: 38px !important;
+            line-height: 38px !important;
             font-size: 18px !important;
+            transition: background-color 0.2s;
+        }
+
+        .leaflet-bar a.leaflet-control-zoom-in {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+
+        .leaflet-bar a:hover {
+            background-color: #334155 !important;
+        }
+
+        .leaflet-bar a.leaflet-disabled {
+            background-color: #0f172a !important;
+            color: #475569 !important;
+            cursor: not-allowed;
         }
         
         /* Styled Map Info Popups */
@@ -139,7 +150,15 @@
             <h1 class="font-bold text-lg tracking-tight text-white flex items-center gap-1.5">
                 <i data-lucide="cloud-rain" class="accent-text-glow w-5 h-5 animate-bounce"></i> HK Rain Watch
             </h1>
-            <p id="lastUpdated" class="text-xs text-slate-400">Fetching live data...</p>
+            <div class="flex items-center gap-2 mt-0.5">
+                <p id="lastUpdated" class="text-[11px] text-slate-400">Fetching live data...</p>
+                <span class="text-slate-600 text-[8px]">•</span>
+                <!-- 🟢 NEW FEATURE: Pulsing Dynamic Online User Badge -->
+                <div class="flex items-center gap-1 bg-emerald-950/40 border border-emerald-500/15 px-1.5 py-0.5 rounded-full text-[9px] text-emerald-400 font-bold uppercase tracking-wider">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="liveCounter">4 is watching 👀</span>
+                </div>
+            </div>
         </div>
         <div class="flex items-center gap-3">
             <div class="text-right">
@@ -191,8 +210,8 @@
         <div id="map" class="w-full h-full z-0"></div>
 
         <!-- Dynamic Floating Legend -->
-        <div id="mapLegend" class="absolute left-4 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl shadow-2xl max-w-[210px] text-xs">
-            <!-- Populated dynamically by getRainConfig -->
+        <div id="mapLegend" class="absolute left-4 z-10 transition-all duration-300 ease-in-out">
+            <!-- Populated dynamically by getRainConfig and Legend Toggles -->
         </div>
     </main>
 
@@ -262,8 +281,8 @@
 
         // 📍 GEOGRAPHIC BOUNDS: Centering the default view on Hong Kong Territory
         const HK_GEOGRAPHIC_BOUNDS = [
-            [22.14, 113.82], // Southwest corner (Lantau / Southern Waters)
-            [22.58, 114.48]  // Northeast corner (New Territories / Mirs Bay)
+            [22.14, 113.82], // Southwest corner
+            [22.58, 114.48]  // Northeast corner
         ];
 
         // 🛡️ BOUNDARY BARRIER: Bounding box updated to exactly 1.2x size of Hong Kong
@@ -316,11 +335,12 @@
 
         const state = {
             data: [],
-            selectedStation: "All", // 📱 FIXED: Defaults to "All" instead of "Hong Kong Observatory"
+            selectedStation: "All", 
             timer: null,
             countdownSeconds: 720,
             map: null,
-            markers: [] 
+            markers: [],
+            legendMinimized: false 
         };
 
         window.onload = () => {
@@ -328,40 +348,30 @@
             
             // Map Initial Configuration
             state.map = L.map('map', {
-                zoomControl: true,
+                zoomControl: false, // Stacked bottomright controls
                 attributionControl: false,
-                
-                // Restrict zoom out past double size of HK
                 minZoom: 10,
                 maxZoom: 18,
-                
-                // Restrict panning boundaries to 1.2x limits
                 maxBounds: HK_1_2_MAP_LIMITS,
-                maxBoundsViscosity: 1.0, // Strict bounce-back boundary
-                
-                // Disable Leaflet's default double click zoom to support custom reset action
+                maxBoundsViscosity: 1.0, 
                 doubleClickZoom: false
             });
 
-            // Set default view on start centering Hong Kong Territory
             resetToDefaultView(false);
 
-            // Re-align default zooming handles to bottom right
             L.control.zoom({
                 position: 'bottomright'
             }).addTo(state.map);
 
-            // Tile layers (Dark theme)
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 maxZoom: 18
             }).addTo(state.map);
 
-            // DESKTOP GESTURE TRIGGER: Standard mouse double click to reset map positioning
             state.map.on('dblclick', () => {
                 resetToDefaultView(true);
             });
 
-            // MOBILE TOUCH GESTURE TRIGGER: Snappy double-tap detector that bypasses mobile browser delays
+            // Mobile Double-Tap resetting
             let lastTap = 0;
             let touchStartPos = { x: 0, y: 0 };
             const mapContainer = document.getElementById('map');
@@ -382,15 +392,14 @@
                         y: e.changedTouches[0].clientY
                     };
                     
-                    // Calculate movement distance to differentiate dragging/panning from taping
                     const distance = Math.sqrt(
                         Math.pow(touchEndPos.x - touchStartPos.x, 2) + 
                         Math.pow(touchEndPos.y - touchStartPos.y, 2)
                     );
                     
-                    if (distance < 10) { // If finger barely slid (Classified as a TAP)
+                    if (distance < 10) { 
                         const now = Date.now();
-                        if (now - lastTap < 300) { // Tapped twice within 300ms window
+                        if (now - lastTap < 300) { 
                             resetToDefaultView(true);
                         }
                         lastTap = now;
@@ -400,9 +409,23 @@
 
             renderDynamicLegend();
             fetchData();
+            
+            // 🟢 Initialize Organic simulated visitor count loops
+            initSimulatedVisitors();
         };
 
-        // Function to cleanly fit Hong Kong map centered in frame
+        // 🟢 Organic drift algorithm (Runs continuously in the background)
+        function initSimulatedVisitors() {
+            let count = Math.floor(Math.random() * 4) + 3; // Starts between 3 and 6
+            document.getElementById('liveCounter').innerText = `${count} Online`;
+
+            setInterval(() => {
+                const shift = Math.floor(Math.random() * 3) - 1; // -1, 0, or +1
+                count = Math.max(2, Math.min(8, count + shift)); // Lock boundaries between 2 and 8
+                document.getElementById('liveCounter').innerText = `${count} Online`;
+            }, 22000); // Drifts gently every 22 seconds
+        }
+
         function resetToDefaultView(animate = true) {
             if (state.map) {
                 state.map.fitBounds(HK_GEOGRAPHIC_BOUNDS, {
@@ -425,35 +448,54 @@
             return DESIGN_SYSTEM.rainThresholds.black;
         }
 
+        function toggleLegend(minimize) {
+            state.legendMinimized = minimize;
+            renderDynamicLegend();
+        }
+
         function renderDynamicLegend() {
             const container = document.getElementById('mapLegend');
             const thresholds = DESIGN_SYSTEM.rainThresholds;
 
-            container.innerHTML = `
-                <h4 class="font-bold text-[10px] text-slate-400 uppercase tracking-wider mb-2">Rain Intensity (1-Hour)</h4>
-                <div class="space-y-1.5">
-                    <div class="flex items-center gap-2">
-                        <span class="w-3.5 h-3.5 rounded border" style="background-color: ${thresholds.dry.mapColor}80; border-color: ${thresholds.dry.mapColor}"></span>
-                        <span class="text-slate-300">${thresholds.dry.badgeText} (&lt; 1mm)</span>
+            if (state.legendMinimized) {
+                container.className = "absolute left-4 z-10 bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-full shadow-2xl w-11 h-11 flex items-center justify-center cursor-pointer hover:bg-slate-800 transition-all duration-300 ease-in-out";
+                container.setAttribute('onclick', 'toggleLegend(false)');
+                container.innerHTML = `<i data-lucide="info" class="w-5 h-5 text-sky-400 animate-pulse"></i>`;
+            } else {
+                container.className = "absolute left-4 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl shadow-2xl max-w-[210px] text-xs transition-all duration-300 ease-in-out";
+                container.removeAttribute('onclick');
+                container.innerHTML = `
+                    <div class="flex justify-between items-center gap-4 mb-2">
+                        <h4 class="font-bold text-[10px] text-slate-400 uppercase tracking-wider">Rain Intensity (1-Hour)</h4>
+                        <button onclick="event.stopPropagation(); toggleLegend(true)" class="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition-colors" title="Minimize">
+                            <i data-lucide="minimize-2" class="w-3 h-3"></i>
+                        </button>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="w-3.5 h-3.5 rounded border" style="background-color: ${thresholds.lightModerate.mapColor}80; border-color: ${thresholds.lightModerate.mapColor}"></span>
-                        <span class="text-slate-300">${thresholds.lightModerate.badgeText} (1-29mm)</span>
+                    <div class="space-y-1.5">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3.5 h-3.5 rounded border" style="background-color: ${thresholds.dry.mapColor}80; border-color: ${thresholds.dry.mapColor}"></span>
+                            <span class="text-slate-300">${thresholds.dry.badgeText} (&lt; 1mm)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3.5 h-3.5 rounded border" style="background-color: ${thresholds.lightModerate.mapColor}80; border-color: ${thresholds.lightModerate.mapColor}"></span>
+                            <span class="text-slate-300">${thresholds.lightModerate.badgeText} (1-29mm)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.amber.mapColor}c0; border-color: ${thresholds.amber.mapColor}"></span>
+                            <span class="font-semibold" style="color: ${thresholds.amber.mapColor}">${thresholds.amber.badgeText} (&ge; 30mm)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.red.mapColor}c0; border-color: ${thresholds.red.mapColor}"></span>
+                            <span class="font-semibold" style="color: ${thresholds.red.mapColor}">${thresholds.red.badgeText} (&ge; 50mm)</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.black.mapColor}c0; border-color: ${thresholds.black.mapColor}"></span>
+                            <span class="font-semibold" style="color: ${thresholds.black.mapColor}">${thresholds.black.badgeText} (&ge; 70mm)</span>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.amber.mapColor}c0; border-color: ${thresholds.amber.mapColor}"></span>
-                        <span class="font-semibold" style="color: ${thresholds.amber.mapColor}">${thresholds.amber.badgeText} (&ge; 30mm)</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.red.mapColor}c0; border-color: ${thresholds.red.mapColor}"></span>
-                        <span class="font-semibold" style="color: ${thresholds.red.mapColor}">${thresholds.red.badgeText} (&ge; 50mm)</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.black.mapColor}c0; border-color: ${thresholds.black.mapColor}"></span>
-                        <span class="font-semibold" style="color: ${thresholds.black.mapColor}">${thresholds.black.badgeText} (&ge; 70mm)</span>
-                    </div>
-                </div>
-            `;
+                `;
+            }
+            lucide.createIcons();
         }
 
         function displayValue(val) {
@@ -482,7 +524,6 @@
                 const selectEl = document.getElementById('stationSelect');
                 selectEl.innerHTML = '';
                 
-                // 📱 FIXED: Injected the global "All Areas" option at index 0 of the selection menu
                 const allOpt = document.createElement('option');
                 allOpt.value = "All";
                 allOpt.innerText = "All Areas";
@@ -497,7 +538,6 @@
 
                 updateMapMarkers();
 
-                // Maintain "All Areas" selection on initial load, or fallback to it if a previously selected station is missing
                 if (state.selectedStation === "All") {
                     selectStation("All", false);
                 } else if (state.data.some(d => d.automaticWeatherStation === state.selectedStation)) {
@@ -516,7 +556,6 @@
             }
         }
 
-        // Recreate map markers (Blocks and Central Dots)
         function updateMapMarkers() {
             state.markers.forEach(m => {
                 state.map.removeLayer(m.block);
@@ -577,26 +616,21 @@
             });
         }
 
-        // Selection Controller
         function selectStation(stationName, panTo = true) {
             state.selectedStation = stationName;
 
             const selectEl = document.getElementById('stationSelect');
             if (selectEl) selectEl.value = stationName;
 
-            // 📱 FIXED: Logic loop to handle "All Areas" configuration
             if (stationName === "All") {
-                // Calculate the territory maximum rainfall recorded among active stations (skips missing data 'M')
                 const validValues = state.data
                     .map(d => (d.value === "M" || d.value === null) ? NaN : parseFloat(d.value))
                     .filter(v => !isNaN(v));
                 const maxVal = validValues.length > 0 ? Math.max(...validValues) : 0;
 
-                // Display maximum rainfall value with custom label metric
                 document.getElementById('giantRainValue').innerText = maxVal;
                 document.getElementById('giantUnit').innerText = "mm (Max)";
 
-                // Base dynamic warning badge status on maximum recorded value
                 const config = getRainConfig(maxVal);
 
                 const badge = document.getElementById('rainBadge');
@@ -607,7 +641,6 @@
                 iconContainer.innerHTML = `<i data-lucide="${config.iconName}" class="w-10 h-10" style="color: ${config.mapColor}"></i>`;
                 lucide.createIcons();
 
-                // Clear white highlights off all map dots 
                 state.markers.forEach(m => {
                     const mValue = state.data.find(d => d.automaticWeatherStation === m.stationName)?.value;
                     const mConfig = getRainConfig(mValue);
@@ -627,7 +660,6 @@
                 return;
             }
 
-            // Normal station selection logic below:
             const stationData = state.data.find(d => d.automaticWeatherStation === stationName);
             if (!stationData) return;
 
