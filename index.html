@@ -111,7 +111,6 @@
             overflow: hidden;
         }
         
-        /* Styled both Zoom In and Zoom Out as a beautifully unified stack */
         .leaflet-bar a {
             background-color: var(--border-color) !important;
             color: var(--text-primary) !important;
@@ -221,28 +220,9 @@
             <!-- Populated dynamically by getRainConfig and Legend Toggles -->
         </div>
 
-        <!-- Floating Active HKO Warnings Chat Bubble (iMessage style) -->
-        <div id="warningBubble" class="absolute right-4 bottom-32 z-10 hidden max-w-[240px] transform scale-0 opacity-0 transition-all duration-300 ease-out origin-bottom-right">
-            <div onclick="dismissWarningBubble()" class="relative bg-slate-900/95 backdrop-blur-md border text-slate-100 p-3 rounded-2xl shadow-2xl flex gap-2.5 items-start cursor-pointer hover:bg-slate-800/95 active:scale-95 transition-all" id="warningBubbleBox">
-                <!-- Glowing Custom Warning Badge Icon -->
-                <div id="warningBubbleCircle" class="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
-                    <span id="warningBubbleEmoji" class="text-sm">ℹ️</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-center mb-0.5">
-                        <span id="warningBubbleHeader" class="font-bold text-[10px] uppercase tracking-wider">HKO Alert</span>
-                        <span class="text-[9px] text-slate-400">Now</span>
-                    </div>
-                    <div id="warningBubbleBody" class="text-xs leading-normal font-medium text-slate-200">
-                        Checking warnings...
-                    </div>
-                    <p class="text-[9px] text-slate-500 mt-1.5 flex items-center gap-0.5">
-                        <i data-lucide="eye-off" class="w-3 h-3"></i> Tap to hide
-                    </p>
-                </div>
-                <!-- Speech Bubble Arrow Tail -->
-                <div class="absolute right-[-6px] bottom-5 w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[8px] border-l-slate-900/95"></div>
-            </div>
+        <!-- 📱 FIXED: Warning Bubble Wrapper shifted to top-right layout bounds -->
+        <div id="warningBubble" class="absolute right-4 top-4 z-10 transition-all duration-300 ease-in-out">
+            <!-- Populated dynamically by fetchWarnings() -->
         </div>
     </main>
 
@@ -440,12 +420,9 @@
 
             renderDynamicLegend();
             fetchData();
-            
-            // Initialize Organic simulated visitor count loops
             initSimulatedVisitors();
         };
 
-        // Organic drift algorithm
         function initSimulatedVisitors() {
             let count = Math.floor(Math.random() * 4) + 3; 
             document.getElementById('liveCounter').innerText = `${count} is watching 👀`;
@@ -577,9 +554,7 @@
                     selectStation("All", true);
                 }
 
-                // Fetch Real-time Warnings
                 await fetchWarnings();
-
                 startCountdown();
 
             } catch (err) {
@@ -590,7 +565,7 @@
             }
         }
 
-        // 💬 Fetch HKO Warning Summaries & Process Alert Speech Bubble 
+        // 💬 FIXED: Warning Engine redesigned to handle dynamic HTML Injection based on unhide status
         async function fetchWarnings() {
             try {
                 const response = await fetch(WARNING_API_URL);
@@ -601,99 +576,95 @@
                 const activeWarningsString = activeWarnings.sort().join(", ");
 
                 if (activeWarningsString !== state.previousWarningsString) {
-                    state.warningsDismissed = false;
+                    state.warningsDismissed = false; // Auto-unhide if active alert changes
                     state.previousWarningsString = activeWarningsString;
                 }
 
-                const bubble = document.getElementById('warningBubble');
+                const container = document.getElementById('warningBubble');
 
-                if (activeWarnings.length > 0 && !state.warningsDismissed) {
-                    const bubbleBox = document.getElementById('warningBubbleBox');
-                    const bubbleCircle = document.getElementById('warningBubbleCircle');
-                    const bubbleEmoji = document.getElementById('warningBubbleEmoji');
-                    const bubbleHeader = document.getElementById('warningBubbleHeader');
-                    const bubbleBody = document.getElementById('warningBubbleBody');
+                if (activeWarnings.length === 0) {
+                    container.className = "hidden";
+                    container.innerHTML = "";
+                    return;
+                }
 
-                    const warningStrLower = activeWarningsString.toLowerCase();
-                    let borderTheme = "";
-                    let circleTheme = "";
-                    let headerColor = "";
-                    let alertEmoji = "ℹ️";
+                const warningStrLower = activeWarningsString.toLowerCase();
+                let borderTheme = "";
+                let circleTheme = "";
+                let headerColor = "";
+                let alertEmoji = "ℹ️";
 
-                    // 👾 Custom Emoji Classification Rules Applied Here
-                    if (warningStrLower.includes("black") || warningStrLower.includes("signal no. 8") || warningStrLower.includes("signal no. 9") || warningStrLower.includes("signal no. 10")) {
-                        borderTheme = "border-fuchsia-500/70 shadow-[0_0_15px_rgba(162,28,175,0.3)]";
-                        circleTheme = "bg-fuchsia-950/80 border border-fuchsia-500 shadow-[0_0_10px_rgba(162,28,175,0.4)]";
-                        headerColor = "text-fuchsia-400";
-                        alertEmoji = "👾"; // Black warning / T8+
-                    } else if (warningStrLower.includes("red") || warningStrLower.includes("signal no. 3")) {
-                        borderTheme = "border-red-500/70 shadow-[0_0_15px_rgba(220,38,38,0.3)]";
-                        circleTheme = "bg-red-950/80 border border-red-500 shadow-[0_0_10px_rgba(220,38,38,0.4)]";
-                        headerColor = "text-red-400";
-                        alertEmoji = "👹"; // Red warning / T3
-                    } else if (warningStrLower.includes("amber") || warningStrLower.includes("thunderstorm") || warningStrLower.includes("signal no. 1") || warningStrLower.includes("yellow")) {
-                        borderTheme = "border-yellow-500/70 shadow-[0_0_15px_rgba(234,179,8,0.3)]";
-                        circleTheme = "bg-yellow-950/80 border border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]";
-                        headerColor = "text-yellow-400";
-                        alertEmoji = "🎃"; // Amber warning / T1 / Thunderstorm
-                    } else {
-                        borderTheme = "border-sky-500/50 shadow-[0_0_12px_rgba(56,189,248,0.2)]";
-                        circleTheme = "bg-sky-950/80 border border-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.3)]";
-                        headerColor = "text-sky-400";
-                        alertEmoji = "ℹ️"; // Fire, Landslip, Frost, etc.
-                    }
+                // Map requested emojis to severity chains
+                if (warningStrLower.includes("black") || warningStrLower.includes("signal no. 8") || warningStrLower.includes("signal no. 9") || warningStrLower.includes("signal no. 10")) {
+                    borderTheme = "border-fuchsia-500/70 shadow-[0_0_15px_rgba(162,28,175,0.3)]";
+                    circleTheme = "bg-fuchsia-950/80 border border-fuchsia-500 shadow-[0_0_10px_rgba(162,28,175,0.4)]";
+                    headerColor = "text-fuchsia-400";
+                    alertEmoji = "👾"; 
+                } else if (warningStrLower.includes("red") || warningStrLower.includes("signal no. 3")) {
+                    borderTheme = "border-red-500/70 shadow-[0_0_15px_rgba(220,38,38,0.3)]";
+                    circleTheme = "bg-red-950/80 border border-red-500 shadow-[0_0_10px_rgba(220,38,38,0.4)]";
+                    headerColor = "text-red-400";
+                    alertEmoji = "👹"; 
+                } else if (warningStrLower.includes("amber") || warningStrLower.includes("thunderstorm") || warningStrLower.includes("signal no. 1") || warningStrLower.includes("yellow")) {
+                    borderTheme = "border-yellow-500/70 shadow-[0_0_15px_rgba(234,179,8,0.3)]";
+                    circleTheme = "bg-yellow-950/80 border border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]";
+                    headerColor = "text-yellow-400";
+                    alertEmoji = "🎃"; 
+                } else {
+                    borderTheme = "border-sky-500/50 shadow-[0_0_12px_rgba(56,189,248,0.2)]";
+                    circleTheme = "bg-sky-950/80 border border-sky-500 shadow-[0_0_8px_rgba(56,189,248,0.3)]";
+                    headerColor = "text-sky-400";
+                    alertEmoji = "ℹ️"; 
+                }
 
-                    // Apply visual theme styling properties 
-                    bubbleBox.className = `relative bg-slate-900/95 backdrop-blur-md border ${borderTheme} text-slate-100 p-3 rounded-2xl shadow-2xl flex gap-2.5 items-start cursor-pointer hover:bg-slate-800/95 active:scale-95 transition-all`;
-                    bubbleCircle.className = `w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${circleTheme}`;
-                    bubbleEmoji.innerText = alertEmoji;
-                    bubbleHeader.className = `font-bold text-[10px] uppercase tracking-wider ${headerColor}`;
+                if (state.warningsDismissed) {
+                    // 🔘 UNHIDE TRIGGER BUTTON STATE
+                    container.className = `absolute right-4 top-4 z-10 bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-full shadow-2xl w-11 h-11 flex items-center justify-center cursor-pointer hover:bg-slate-800 transition-all duration-300 ease-in-out ${borderTheme}`;
+                    container.setAttribute('onclick', 'state.warningsDismissed = false; fetchWarnings();');
+                    container.innerHTML = `<span class="text-lg animate-pulse">${alertEmoji}</span>`;
+                } else {
+                    // 💬 FULL SPEECH PANEL STATE
+                    container.className = `absolute right-4 top-4 z-10 bg-slate-900/95 backdrop-blur-md border ${borderTheme} text-slate-100 p-3 rounded-2xl shadow-2xl flex flex-col max-w-[240px] transition-all duration-300 ease-in-out`;
+                    container.removeAttribute('onclick');
 
-                    // Populate warning message text
+                    let textBody = "";
                     if (activeWarnings.length === 1) {
-                        bubbleBody.innerHTML = `<span class="font-semibold">${activeWarnings[0]}</span> is currently in force.`;
+                        textBody = `<span class="font-semibold">${activeWarnings[0]}</span> is currently active.`;
                     } else {
                         const items = activeWarnings.map(w => `<li class="mt-0.5">• ${w}</li>`).join("");
-                        bubbleBody.innerHTML = `
+                        textBody = `
                             <span class="font-semibold block mb-0.5">Active Signals:</span>
                             <ul class="text-[11px] leading-tight text-slate-300 pl-0.5">${items}</ul>
                         `;
                     }
 
-                    // Show the alert with smooth animation
-                    bubble.classList.remove('hidden');
-                    setTimeout(() => {
-                        bubble.classList.remove('scale-0', 'opacity-0');
-                        bubble.classList.add('scale-100', 'opacity-100');
-                    }, 50);
-                    
-                } else {
-                    hideWarningBubble();
+                    container.innerHTML = `
+                        <div onclick="dismissWarningBubble()" class="flex gap-2.5 items-start w-full cursor-pointer">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${circleTheme}">
+                                <span class="text-sm">${alertEmoji}</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex justify-between items-center mb-0.5">
+                                    <span class="font-bold text-[10px] uppercase tracking-wider ${headerColor}">HKO Alert</span>
+                                    <span class="text-[9px] text-slate-400">Now</span>
+                                </div>
+                                <div class="text-xs leading-normal font-medium text-slate-200">${textBody}</div>
+                                <p class="text-[9px] text-slate-500 mt-1.5 flex items-center gap-0.5">
+                                    <i data-lucide="eye-off" class="w-3 h-3"></i> Tap card to minimize
+                                </p>
+                            </div>
+                        </div>
+                    `;
                 }
+                lucide.createIcons();
             } catch (err) {
-                console.error("Failed warning fetch sequence:", err);
+                console.error("Warning service offline:", err);
             }
         }
 
         function dismissWarningBubble() {
-            const bubble = document.getElementById('warningBubble');
             state.warningsDismissed = true; 
-            
-            bubble.classList.remove('scale-100', 'opacity-100');
-            bubble.classList.add('scale-0', 'opacity-0');
-            
-            setTimeout(() => {
-                bubble.classList.add('hidden');
-            }, 300);
-        }
-
-        function hideWarningBubble() {
-            const bubble = document.getElementById('warningBubble');
-            bubble.classList.remove('scale-100', 'opacity-100');
-            bubble.classList.add('scale-0', 'opacity-0');
-            setTimeout(() => {
-                bubble.classList.add('hidden');
-            }, 300);
+            fetchWarnings(); 
         }
 
         // Recreate map markers (Blocks and Central Dots)
