@@ -10,6 +10,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="HK Rain">
     
+    <!-- Custom iOS Home Screen Icon link -->
+    <link rel="apple-touch-icon" href="icon.png">
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -26,16 +29,17 @@
            Adjust these hex values to repaint the app
            ========================================== */
         :root {
+            /* iOS Safe Areas (Notch, Dynamic Island, and Bottom Swipe Indicator Bar) */
             --sat: env(safe-area-inset-top, 0px);
             --sab: env(safe-area-inset-bottom, 0px);
             
-            --app-bg: #020617;                   /* App main backdrop color (slate-950) */
+            --app-bg: #020617;                      /* App main backdrop color (slate-950) */
             --ui-header-bg: rgba(15, 23, 42, 0.85); /* Navigation bar fill (slate-900) */
             --ui-card-bg: rgba(15, 23, 42, 0.65);   /* Hero panel background */
-            --border-color: #1e293b;             /* Border separators & outlines */
-            --text-primary: #f8fafc;             /* Primary bold text color */
-            --text-secondary: #94a3b8;           /* Subtext & subtitles */
-            --accent-glow: #38bdf8;              /* Countdown timer & main brand glow */
+            --border-color: #1e293b;                /* Border separators & outlines */
+            --text-primary: #f8fafc;                /* Primary bold text color */
+            --text-secondary: #94a3b8;              /* Subtext & subtitles */
+            --accent-glow: #38bdf8;                 /* Countdown timer & main brand glow */
         }
 
         /* Applying the Design System variables to layout */
@@ -43,18 +47,23 @@
             background-color: var(--app-bg) !important;
             color: var(--text-primary) !important;
         }
+        
+        /* 📱 FIXED: Automatically pushes header content down past Notch / Battery indicator */
         header {
             background-color: var(--ui-header-bg) !important;
             border-color: var(--border-color) !important;
             backdrop-filter: blur(12px);
+            padding-top: calc(var(--sat) + 0.75rem) !important; /* Notch Space + normal padding */
+            padding-bottom: 0.75rem !important;
         }
+        
         #heroCard {
             background-color: var(--ui-card-bg) !important;
             border-color: var(--border-color) !important;
             backdrop-filter: blur(12px);
         }
         
-        /* 📱 FIXED: Dropdown styling configured to exactly 16px to prevent iOS tiny text & auto-zoom */
+        /* Dropdown styling configured to exactly 16px to prevent iOS tiny text & auto-zoom */
         #stationSelect {
             background-color: var(--border-color) !important;
             border-color: var(--border-color) !important;
@@ -78,6 +87,14 @@
         }
         .text-slate-300 {
             color: var(--text-primary) !important;
+        }
+
+        /* 📱 FIXED: Margins on floating map legends to clear the bottom iOS swipe indicator */
+        #mapLegend {
+            bottom: calc(var(--sab) + 1rem) !important;
+        }
+        .leaflet-bottom.leaflet-right {
+            bottom: calc(var(--sab) + 0.5rem) !important;
         }
 
         /* Custom styling for Leaflet Zoom Controls */
@@ -106,7 +123,7 @@
 <body class="flex flex-col h-screen overflow-hidden font-sans select-none">
 
     <!-- Header -->
-    <header class="border-b px-4 py-3 flex justify-between items-center z-10">
+    <header class="border-b px-4 flex justify-between items-center z-10">
         <div>
             <h1 class="font-bold text-lg tracking-tight text-white flex items-center gap-1.5">
                 <i data-lucide="cloud-rain" class="accent-text-glow w-5 h-5 animate-bounce"></i> HK Rain Watch
@@ -130,12 +147,10 @@
             <!-- Dropdown selector -->
             <div class="flex items-center justify-between gap-2 mb-3">
                 <span class="text-xs text-slate-400 font-medium">Select Area:</span>
-                <!-- 📱 FIXED: Adjusted sizing to ensure station names fit comfortably on small devices -->
                 <div class="relative flex-1 max-w-[210px]">
                     <select id="stationSelect" onchange="selectStation(this.value, true)" class="w-full border text-slate-100 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-sky-500 pr-8">
                         <option>Loading...</option>
                     </select>
-                    <!-- Custom dropdown arrow indicator to look consistent on iOS -->
                     <div class="pointer-events-none absolute inset-y-0 right-2 flex items-center text-slate-400">
                         <i data-lucide="chevron-down" class="w-4 h-4"></i>
                     </div>
@@ -165,7 +180,7 @@
         <div id="map" class="w-full h-full z-0"></div>
 
         <!-- Dynamic Floating Legend -->
-        <div id="mapLegend" class="absolute bottom-4 left-4 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl shadow-2xl max-w-[210px] text-xs">
+        <div id="mapLegend" class="absolute left-4 z-10 bg-slate-900/90 backdrop-blur-md border border-slate-800 p-3 rounded-xl shadow-2xl max-w-[210px] text-xs">
             <!-- Populated dynamically by getRainConfig -->
         </div>
     </main>
@@ -189,7 +204,6 @@
             },
 
             // Map Rain Levels matching Hong Kong Observatory warnings
-            // 📝 FIXED: badgeTexts are now beautifully formatted in Title Case
             rainThresholds: {
                 dry: {
                     maxVal: 0.9,               
@@ -209,21 +223,21 @@
                     maxVal: 49.9,              
                     mapColor: "#eab308",       
                     badgeClass: "bg-yellow-950/90 text-yellow-400 border border-yellow-500 font-extrabold animate-pulse",
-                    badgeText: "Amber Warning", // Updated to Title Case
+                    badgeText: "Amber Warning", 
                     iconName: "cloud-rain-wind"
                 },
                 red: {
                     maxVal: 69.9,              
                     mapColor: "#dc2626",       
                     badgeClass: "bg-red-950/90 text-red-400 border border-red-500 font-extrabold animate-pulse",
-                    badgeText: "Red Warning",   // Updated to Title Case
+                    badgeText: "Red Warning",   
                     iconName: "cloud-lightning"
                 },
                 black: {
                     maxVal: Infinity,          
                     mapColor: "#a21caf",       
                     badgeClass: "bg-fuchsia-950 text-fuchsia-400 border border-fuchsia-500 font-extrabold animate-pulse",
-                    badgeText: "Black Warning", // Updated to Title Case
+                    badgeText: "Black Warning", 
                     iconName: "cloud-lightning"
                 },
                 noData: {
@@ -336,15 +350,15 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.amber.mapColor}c0; border-color: ${thresholds.amber.mapColor}"></span>
-                        <span class="font-semibold text-yellow-400" style="color: ${thresholds.amber.mapColor}">${thresholds.amber.badgeText} (&ge; 30mm)</span>
+                        <span class="font-semibold" style="color: ${thresholds.amber.mapColor}">${thresholds.amber.badgeText} (&ge; 30mm)</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.red.mapColor}c0; border-color: ${thresholds.red.mapColor}"></span>
-                        <span class="font-semibold text-red-400" style="color: ${thresholds.red.mapColor}">${thresholds.red.badgeText} (&ge; 50mm)</span>
+                        <span class="font-semibold" style="color: ${thresholds.red.mapColor}">${thresholds.red.badgeText} (&ge; 50mm)</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="w-3.5 h-3.5 rounded border animate-pulse" style="background-color: ${thresholds.black.mapColor}c0; border-color: ${thresholds.black.mapColor}"></span>
-                        <span class="font-semibold text-fuchsia-400" style="color: ${thresholds.black.mapColor}">${thresholds.black.badgeText} (&ge; 70mm)</span>
+                        <span class="font-semibold" style="color: ${thresholds.black.mapColor}">${thresholds.black.badgeText} (&ge; 70mm)</span>
                     </div>
                 </div>
             `;
