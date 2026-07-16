@@ -42,13 +42,12 @@
             --accent-glow: #38bdf8;                 /* Countdown timer & main brand glow */
         }
 
-        /* Applying the Design System variables to layout */
         body {
             background-color: var(--app-bg) !important;
             color: var(--text-primary) !important;
         }
         
-        /* 📱 FIXED: Automatically pushes header content down past Notch / Battery indicator */
+        /* Automatically pushes header content down past Notch / Battery indicator */
         header {
             background-color: var(--ui-header-bg) !important;
             border-color: var(--border-color) !important;
@@ -89,7 +88,7 @@
             color: var(--text-primary) !important;
         }
 
-        /* 📱 FIXED: Margins on floating map legends to clear the bottom iOS swipe indicator */
+        /* Margins on floating map legends to clear the bottom iOS swipe indicator */
         #mapLegend {
             bottom: calc(var(--sab) + 1rem) !important;
         }
@@ -249,6 +248,18 @@
             }
         };
 
+        // 📍 GEOGRAPHIC BOUNDS: Centering the default view on Hong Kong Territory
+        const HK_GEOGRAPHIC_BOUNDS = [
+            [22.14, 113.82], // Southwest corner (Lantau / Southern Waters)
+            [22.58, 114.48]  // Northeast corner (New Territories / Mirs Bay)
+        ];
+
+        // 🛡️ BOUNDARY BARRIER: Bounding box updated to exactly 1.2x size of Hong Kong
+        const HK_1_2_MAP_LIMITS = [
+            [22.10, 113.75], // Clean 1.2x Southwest limits
+            [22.62, 114.55]  // Clean 1.2x Northeast limits
+        ];
+
         const stationCoords = {
             "Lau Fau Shan": [22.4689, 113.9839],
             "Wetland Park": [22.4667, 114.0089],
@@ -303,23 +314,55 @@
         window.onload = () => {
             lucide.createIcons();
             
+            // Map Initial Configuration
             state.map = L.map('map', {
                 zoomControl: true,
-                attributionControl: false
-            }).setView([22.36, 114.15], 11);
+                attributionControl: false,
+                
+                // Restrict zoom out past double size of HK
+                minZoom: 10,
+                maxZoom: 18,
+                
+                // 🛡️ FIXED: Restrict panning boundaries to 1.2x limits
+                maxBounds: HK_1_2_MAP_LIMITS,
+                maxBoundsViscosity: 1.0, // Strict bounce-back boundary
+                
+                // Disable Leaflet's default double click zoom to support custom reset action
+                doubleClickZoom: false
+            });
 
+            // Set default view on start centering Hong Kong Territory
+            resetToDefaultView(false);
+
+            // Re-align default zooming handles to bottom right
             L.control.zoom({
                 position: 'bottomright'
             }).addTo(state.map);
 
+            // Tile layers (Dark theme)
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
                 maxZoom: 18
             }).addTo(state.map);
 
-            renderDynamicLegend();
+            // GESTURE TRIGGER: Listen for custom double click to reset map positioning
+            state.map.on('dblclick', () => {
+                resetToDefaultView(true);
+            });
 
+            renderDynamicLegend();
             fetchData();
         };
+
+        // Function to cleanly fit Hong Kong map centered in frame
+        function resetToDefaultView(animate = true) {
+            if (state.map) {
+                state.map.fitBounds(HK_GEOGRAPHIC_BOUNDS, {
+                    padding: [15, 15],
+                    animate: animate,
+                    duration: 0.8
+                });
+            }
+        }
 
         function getRainConfig(value) {
             const val = parseFloat(value);
