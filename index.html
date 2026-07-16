@@ -101,10 +101,22 @@
             border: none !important;
             box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
         }
-        .leaflet-bar a {
+        
+        /* Completely hide the zoom-out button */
+        .leaflet-control-zoom-out {
+            display: none !important;
+        }
+
+        /* Restyle the zoom-in button into a clean standalone rounded control */
+        .leaflet-bar a.leaflet-control-zoom-in {
             background-color: var(--border-color) !important;
             color: var(--text-primary) !important;
-            border-bottom: 1px solid var(--border-color) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 0.5rem !important; /* clean rounded corners on all sides */
+            width: 36px !important;
+            height: 36px !important;
+            line-height: 34px !important;
+            font-size: 18px !important;
         }
         
         /* Styled Map Info Popups */
@@ -304,7 +316,7 @@
 
         const state = {
             data: [],
-            selectedStation: "Hong Kong Observatory",
+            selectedStation: "All", // 📱 FIXED: Defaults to "All" instead of "Hong Kong Observatory"
             timer: null,
             countdownSeconds: 720,
             map: null,
@@ -323,7 +335,7 @@
                 minZoom: 10,
                 maxZoom: 18,
                 
-                // 🛡️ FIXED: Restrict panning boundaries to 1.2x limits
+                // Restrict panning boundaries to 1.2x limits
                 maxBounds: HK_1_2_MAP_LIMITS,
                 maxBoundsViscosity: 1.0, // Strict bounce-back boundary
                 
@@ -344,10 +356,47 @@
                 maxZoom: 18
             }).addTo(state.map);
 
-            // GESTURE TRIGGER: Listen for custom double click to reset map positioning
+            // DESKTOP GESTURE TRIGGER: Standard mouse double click to reset map positioning
             state.map.on('dblclick', () => {
                 resetToDefaultView(true);
             });
+
+            // MOBILE TOUCH GESTURE TRIGGER: Snappy double-tap detector that bypasses mobile browser delays
+            let lastTap = 0;
+            let touchStartPos = { x: 0, y: 0 };
+            const mapContainer = document.getElementById('map');
+
+            mapContainer.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    touchStartPos = {
+                        x: e.touches[0].clientX,
+                        y: e.touches[0].clientY
+                    };
+                }
+            }, { passive: true });
+
+            mapContainer.addEventListener('touchend', (e) => {
+                if (e.changedTouches.length === 1) {
+                    const touchEndPos = {
+                        x: e.changedTouches[0].clientX,
+                        y: e.changedTouches[0].clientY
+                    };
+                    
+                    // Calculate movement distance to differentiate dragging/panning from taping
+                    const distance = Math.sqrt(
+                        Math.pow(touchEndPos.x - touchStartPos.x, 2) + 
+                        Math.pow(touchEndPos.y - touchStartPos.y, 2)
+                    );
+                    
+                    if (distance < 10) { // If finger barely slid (Classified as a TAP)
+                        const now = Date.now();
+                        if (now - lastTap < 300) { // Tapped twice within 300ms window
+                            resetToDefaultView(true);
+                        }
+                        lastTap = now;
+                    }
+                }
+            }, { passive: true });
 
             renderDynamicLegend();
             fetchData();
@@ -432,6 +481,13 @@
 
                 const selectEl = document.getElementById('stationSelect');
                 selectEl.innerHTML = '';
+                
+                // 📱 FIXED: Injected the global "All Areas" option at index 0 of the selection menu
+                const allOpt = document.createElement('option');
+                allOpt.value = "All";
+                allOpt.innerText = "All Areas";
+                selectEl.appendChild(allOpt);
+
                 sortedStations.forEach(item => {
                     const opt = document.createElement('option');
                     opt.value = item.automaticWeatherStation;
@@ -441,10 +497,13 @@
 
                 updateMapMarkers();
 
-                if (state.data.some(d => d.automaticWeatherStation === state.selectedStation)) {
+                // Maintain "All Areas" selection on initial load, or fallback to it if a previously selected station is missing
+                if (state.selectedStation === "All") {
+                    selectStation("All", false);
+                } else if (state.data.some(d => d.automaticWeatherStation === state.selectedStation)) {
                     selectStation(state.selectedStation, true);
                 } else {
-                    selectStation("Hong Kong Observatory", true);
+                    selectStation("All", true);
                 }
 
                 startCountdown();
@@ -457,6 +516,7 @@
             }
         }
 
+        // Recreate map markers (Blocks and Central Dots)
         function updateMapMarkers() {
             state.markers.forEach(m => {
                 state.map.removeLayer(m.block);
@@ -517,12 +577,57 @@
             });
         }
 
+        // Selection Controller
         function selectStation(stationName, panTo = true) {
             state.selectedStation = stationName;
 
             const selectEl = document.getElementById('stationSelect');
             if (selectEl) selectEl.value = stationName;
 
+            // 📱 FIXED: Logic loop to handle "All Areas" configuration
+            if (stationName === "All") {
+                // Calculate the territory maximum rainfall recorded among active stations (skips missing data 'M')
+                const validValues = state.data
+                    .map(d => (d.value === "M" || d.value === null) ? NaN : parseFloat(d.value))
+                    .filter(v => !isNaN(v));
+                const maxVal = validValues.length > 0 ? Math.max(...validValues) : 0;
+
+                // Display maximum rainfall value with custom label metric
+                document.getElementById('giantRainValue').innerText = maxVal;
+                document.getElementById('giantUnit').innerText = "mm (Max)";
+
+                // Base dynamic warning badge status on maximum recorded value
+                const config = getRainConfig(maxVal);
+
+                const badge = document.getElementById('rainBadge');
+                badge.innerText = config.badgeText;
+                badge.className = `px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${config.badgeClass}`;
+
+                const iconContainer = document.getElementById('weatherIcon');
+                iconContainer.innerHTML = `<i data-lucide="${config.iconName}" class="w-10 h-10" style="color: ${config.mapColor}"></i>`;
+                lucide.createIcons();
+
+                // Clear white highlights off all map dots 
+                state.markers.forEach(m => {
+                    const mValue = state.data.find(d => d.automaticWeatherStation === m.stationName)?.value;
+                    const mConfig = getRainConfig(mValue);
+                    m.dot.setStyle({
+                        radius: DESIGN_SYSTEM.map.dotNormalRadius,
+                        color: DESIGN_SYSTEM.map.dotNormalBorder,
+                        weight: DESIGN_SYSTEM.map.dotNormalWeight,
+                        fillColor: mConfig.mapColor,
+                        fillOpacity: 1
+                    });
+                });
+
+                if (panTo && state.map) {
+                    resetToDefaultView(true);
+                    state.map.closePopup();
+                }
+                return;
+            }
+
+            // Normal station selection logic below:
             const stationData = state.data.find(d => d.automaticWeatherStation === stationName);
             if (!stationData) return;
 
